@@ -134,6 +134,8 @@ def classify(text: str) -> str:
         return "invoice"
     if "order placed" in t and "order number" in t:
         return "order_summary"
+    if t.startswith("subject:") and re.search(r"\b\d{3}-\d{7}-\d{7}\b|\border\b", t):
+        return "order_summary"  # order / shipping confirmation email saved by mail.py
     if re.search(r"broadband|fibre|fiber|internet plan|data usage|isp", t) and "mbps" in t:
         return "isp_bill"
     if re.search(r"user manual|owner'?s manual|instruction manual|operating instructions|user guide", t) \
@@ -189,8 +191,11 @@ def short_name(title: str, brand: str | None) -> str:
     """'JBL New Live 780NC, Advanced Noise ...' -> 'JBL New Live 780NC'."""
     head = re.split(r"[,(|\[]", title)[0].strip()
     words = head.split()
-    if len(words) > 7:
-        head = " ".join(words[:7])
+    if len(words) > 6:
+        head = " ".join(words[:5])
+    model = _model(title, "")
+    if model and model.lower() not in head.lower():
+        head = f"{head} {model}"
     return head
 
 
@@ -226,24 +231,44 @@ INTERVAL_RE = re.compile(
 ACTION_RE = re.compile(r"\b(clean|replace|change|descale|service|servic|inspect|check|wash|flush|lubricate|oil|test|top up)\w*", re.I)
 
 
+GENERIC = {"the", "and", "with", "for", "filter", "every", "once", "months", "month", "year", "years",
+           "clean", "replace", "change", "check", "checked", "service", "your", "from", "best", "get", "unit"}
+
+
+def _join_wrapped(text: str) -> str:
+    """Join lines that are a wrapped continuation (next line starts lowercase); keep real breaks."""
+    return re.sub(r"\n(?=[a-z(])", " ", text)
+
+
 def find_schedules(text: str) -> list[dict]:
     """Sentences like 'Replace the sediment filter every 6 months' -> task + interval in days."""
     found, seen = [], set()
-    flat = re.sub(r"\s+", " ", text)
-    for sent in re.split(r"(?<=[.!?])\s+|\s•\s|\n", flat):
+    for sent in re.split(r"(?<=[.!?])\s+|\n|\s•\s", _join_wrapped(text)):
+        sent = re.sub(r"\s+", " ", sent).strip(" -•*")
         m = INTERVAL_RE.search(sent)
-        if not m or not ACTION_RE.search(sent):
+        act = ACTION_RE.search(sent)
+        if not m or not act or len(sent) > 220:
             continue
         n_raw = (m.group("n") or "1").lower()
         n = int(n_raw) if n_raw.isdigit() else WORD_NUM.get(n_raw, 1)
-        days = n * {"day": 1, "week": 7, "month": 30, "year": 365}[m.group("unit").lower()]
-        sent = sent.strip(" -•*")
-        key = (ACTION_RE.search(sent).group(0).lower(), days)
-        if key in seen or len(sent) > 220:
+        unit = m.group("unit").lower()
+        days = {"day": n, "week": 7 * n, "month": round(n * 365 / 12), "year": 365 * n}[unit]
+        # title = from the start of the sentence (or the verb) up to the interval phrase
+        head = sent[:m.start()].strip(" ,.;:")
+        title = re.sub(r"^(please|you should|it is recommended to|we recommend)\s+", "", head, flags=re.I)
+        title = re.sub(r"\s+by (?:an? |the )?\w+ technician$", "", title, flags=re.I)
+        title = (title[:1].upper() + title[1:])[:70] or sent[:70]
+        key = (act.group(0).lower()[:5], days)
+        if key in seen:
             continue
         seen.add(key)
-        found.append({"title": sent[:90], "interval_days": days, "how_to": sent})
+        mode = "Technician" if re.search(r"technician|service (?:centre|center|engineer)|authori[sz]ed", sent, re.I) else "DIY"
+        found.append({"title": title, "interval_days": days, "how_to": sent, "mode": mode})
     return found
+
+
+def key_nouns(title: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z]{3,}", title.lower()) if w not in GENERIC}
 
 
 def extract(path: Path) -> Extracted:
@@ -281,10 +306,11 @@ def extract(path: Path) -> Extracted:
     if m := re.search(rf"Return window (?:closed|closes) on\s+(\d{{1,2}} (?:{MONTHS}) \d{{4}})", text, re.I):
         ex.return_by = parse_date(m.group(1))
 
-    # money
-    for pat in (r"Grand Total\s*:?\s*₹?\s*([\d,]+\.?\d*)", r"Invoice Value\s*:?\s*\n?\s*₹?\s*([\d,]+\.?\d*)",
-                r"TOTAL:\s*₹[\d,.]+\s*₹([\d,]+\.\d{2})", r"Total Amount\s*:?\s*₹?\s*([\d,]+\.?\d*)",
-                r"Amount Payable\s*:?\s*(?:Rs\.?|₹)?\s*([\d,]+\.?\d*)"):
+    # money: currency symbol may be ₹, Rs., INR, or garbled by OCR/fonts, so allow any short prefix (AI_LOG #5)
+    CUR = r"[^\d\n]{0,5}?"
+    for pat in (rf"Grand Total\s*:?{CUR}([\d,]+\.\d{{2}})", rf"Invoice Value\s*:?\s*\n?{CUR}([\d,]+\.\d{{2}})",
+                rf"\bTOTAL:{CUR}[\d,]+\.\d{{2}}{CUR}([\d,]+\.\d{{2}})", rf"Total Amount\s*:?{CUR}([\d,]+\.\d{{2}})",
+                rf"Amount Payable\s*:?{CUR}([\d,]+\.?\d*)"):
         if m := re.search(pat, text, re.I):
             ex.price = _money(m.group(1))
             break
@@ -308,6 +334,9 @@ def extract(path: Path) -> Extracted:
         ex.warranty_months = n * (12 if m.group(2).lower() == "year" else 1)
 
     ex.title = _title(text, ex.kind)
+    if not ex.title and (m := re.search(r'^Subject:.*?(?:order of|ordered|shipped:?|delivered:?)\s*["“]?(.+?)["”]?(?:\.{3}|…)?\s*(?:has been|is|$)',
+                                         text, re.I | re.M)):
+        ex.title = m.group(1).strip(' "“”')
     if ex.kind == "manual":
         if m := re.search(r"^(.{5,80}?)\s*(?:User Manual|Owner'?s Manual|Instruction Manual|User Guide)", text, re.I | re.M):
             ex.title = m.group(1).strip(" -:")
