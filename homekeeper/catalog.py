@@ -171,8 +171,8 @@ def amazon_search_url(*terms: str | None) -> str:
 
 
 def support_search_url(brand: str | None, model: str | None = None) -> str:
-    q = f"{brand or ''} {model or ''} India customer care service request"
-    return f"https://www.google.com/search?q={quote_plus(q.strip())}"
+    q = " ".join(t for t in (brand, model, "India customer care service request") if t)
+    return f"https://www.google.com/search?q={quote_plus(q)}"
 
 
 def slug(text: str) -> str:

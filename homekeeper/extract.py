@@ -158,6 +158,8 @@ def _title(text: str, kind: str) -> str | None:
                 continue
             if re.match(r"^(HSN|TOTAL|Amount in Words)", ln, re.I):
                 break
+            # price columns sit at the end of each wrapped line: cut them per line (AI_LOG #9)
+            ln = ln.split("₹")[0]
             out.append(re.sub(r"^1\s+", "", ln) if not out else ln)
     elif kind == "packing_slip":
         for i, ln in enumerate(lines):
@@ -180,8 +182,6 @@ def _title(text: str, kind: str) -> str | None:
     if not out:
         return None
     title = " ".join(out)
-    title = re.sub(r"₹\s?[\d,]+\.\d{2}.*?(?=\s[A-Z][a-z]|$)", " ", title)  # strip price columns
-    title = re.sub(r"\s+\d+\s+₹.*", "", title)
     title = title.split(" | ")[0]
     title = re.sub(r"\s{2,}", " ", title).strip(" ,(")
     return title or None
