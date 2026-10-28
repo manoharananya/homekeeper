@@ -23,3 +23,17 @@ def seed_network(con, days: int = 7, plan: float = 100.0):
                     (ts.isoformat(timespec="minutes"), round(down, 1), round(down * 0.9, 1),
                      round(rnd.uniform(6, 40), 1), loss, plan))
     con.commit()
+
+
+def seed_history(con):
+    """Pretend some jobs were done in the past, so the demo shows a realistic mix of due dates and spend."""
+    from datetime import date, timedelta
+
+    from . import tracker
+    today = db.today()
+    plan = [("Wash indoor air filters", 22, 0, "self"), ("Wet service (coil jet wash)", 170, 650, "Cool Air technician"),
+            ("Clean the storage tank", 80, 0, "self"), ("Flush tank sediment", 150, 0, "self")]
+    for title, ago, cost, who in plan:
+        t = con.execute("SELECT id FROM tasks WHERE title=?", (title,)).fetchone()
+        if t:
+            tracker.mark_done(con, t["id"], cost, who, "demo history", today - timedelta(days=ago))

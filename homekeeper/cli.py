@@ -473,6 +473,7 @@ def cmd_demo(con_unused, args):
     cmd_scan(con, argparse.Namespace(yes=True))
     from . import demo_data
     demo_data.seed_network(con)
+    demo_data.seed_history(con)
     console.print()
     cmd_dash(con, argparse.Namespace(days=30))
     console.print(f"\n[bold]Try next[/] (demo data):\n  python -m homekeeper --home {target.name} list\n"
