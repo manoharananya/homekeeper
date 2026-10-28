@@ -114,10 +114,15 @@ def suggest(fields: dict, owner_names: list[str]) -> tuple[str, str]:
     return "home", "Shipped to you" if ship else "No shipping name found"
 
 
-def _file_into_vault(path: str, folder: str) -> str:
+def _file_into_vault(path: str, folder: str, kind: str | None = None) -> str:
+    """Move a file into vault/<folder>/, renamed to its type (invoice.pdf, manual.pdf...)."""
     dest_dir = db.home_dir() / "vault" / folder
     dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / Path(path).name
+    src = Path(path)
+    stem = kind if kind and kind != "unknown" else src.stem
+    dest, n = dest_dir / f"{stem}{src.suffix.lower()}", 2
+    while dest.exists() and dest.resolve() != src.resolve():
+        dest, n = dest_dir / f"{stem}-{n}{src.suffix.lower()}", n + 1
     if Path(path).resolve() != dest.resolve():
         shutil.move(path, dest)
     return str(dest)
@@ -176,7 +181,7 @@ def save_product(con, f: dict, cand: Candidate) -> int:
     pid = cur.lastrowid
     folder = catalog.slug(f"{f['name']}-{pid}")
     for ex in cand.docs + cand.manuals:
-        record_doc(con, ex, "home", pid, _file_into_vault(ex.path, folder))
+        record_doc(con, ex, "home", pid, _file_into_vault(ex.path, folder, ex.kind))
     schedules = [s for m in cand.manuals for s in m.schedules]
     add_tasks(con, pid, f["category"], schedules, f.get("purchase_date"), f.get("brand"), f.get("model"))
     con.execute("INSERT INTO contacts(product_id,name,url,notes) VALUES (?,?,?,?)",
@@ -194,7 +199,7 @@ def record_doc(con, ex: Extracted, decision: str, product_id: int | None, path: 
 def attach_manual(con, man: Extracted, pid: int):
     row = con.execute("SELECT * FROM products WHERE id=?", (pid,)).fetchone()
     folder = catalog.slug(f"{row['name']}-{pid}")
-    record_doc(con, man, "home", pid, _file_into_vault(man.path, folder))
+    record_doc(con, man, "home", pid, _file_into_vault(man.path, folder, "manual"))
     if man.schedules:
         con.execute("DELETE FROM tasks WHERE product_id=? AND source='template' AND last_done IS NULL", (pid,))
         add_tasks(con, pid, row["category"], man.schedules, row["purchase_date"], row["brand"], row["model"])
