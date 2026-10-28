@@ -38,13 +38,19 @@ def speed_test() -> dict:
         return {"down_mbps": round(down, 1), "up_mbps": round(up, 1),
                 "ping_ms": round(st.results.ping, 1), "method": "speedtest.net"}
     except Exception:
-        url = "https://speed.cloudflare.com/__down?bytes=25000000"
+        pass
+    # fallback: time a 25 MB download. Offline / blocked networks return an error instead of crashing (AI_LOG #10)
+    url = "https://speed.cloudflare.com/__down?bytes=25000000"
+    try:
         t0 = time.time()
         with urllib.request.urlopen(url, timeout=60) as r:
             n = len(r.read())
         secs = time.time() - t0
         return {"down_mbps": round(n * 8 / secs / 1e6, 1), "up_mbps": None, "ping_ms": None,
                 "method": "cloudflare download"}
+    except Exception as e:
+        return {"down_mbps": None, "up_mbps": None, "ping_ms": None, "method": "failed",
+                "error": f"Speed test failed ({e.__class__.__name__}). Are you online?"}
 
 
 def ping(host: str = "1.1.1.1", count: int = 10) -> dict:
@@ -63,7 +69,8 @@ def ping(host: str = "1.1.1.1", count: int = 10) -> dict:
 
 
 def run_check(con) -> dict:
-    res = {**ping(), **{k: v for k, v in speed_test().items() if v is not None or k != "ping_ms"}}
+    res = ping()
+    res.update({k: v for k, v in speed_test().items() if v is not None or k not in res})
     plan = db.get_setting(con, "plan_mbps")
     res["plan_mbps"] = plan
     con.execute("INSERT INTO net_log(ts,down_mbps,up_mbps,ping_ms,loss_pct,plan_mbps) VALUES (?,?,?,?,?,?)",

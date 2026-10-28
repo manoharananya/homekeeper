@@ -43,6 +43,16 @@ def pick_product(con, ref: str):
 
 
 def cmd_setup(con, args):
+    flags_given = any(v is not None for v in (args.names, args.plan, args.isp))
+    if flags_given:  # non-interactive: only change what was passed (AI_LOG #12)
+        if args.names:
+            db.set_setting(con, "owner_names", [n.strip() for n in args.names.split(",") if n.strip()])
+        if args.plan is not None:
+            db.set_setting(con, "plan_mbps", float(args.plan))
+        if args.isp:
+            db.set_setting(con, "isp", args.isp)
+        console.print("[green]Settings saved.[/]")
+        return
     names = args.names or Prompt.ask("Your name(s) as they appear on orders (comma separated)",
                                      default=", ".join(db.get_setting(con, "owner_names", [])) or None)
     db.set_setting(con, "owner_names", [n.strip() for n in names.split(",") if n.strip()])
@@ -76,7 +86,9 @@ def _show_candidate(i: int, n: int, f: dict, cand: intake.Candidate, why: str):
         rows.append(("Manual", f"yes, {n_s} maintenance schedule(s) found"))
     for k, v in rows:
         t.add_row(k, str(v))
-    console.print(Panel(t, title=f"[bold]{i}/{n}  {f['name']}[/]", subtitle=f"[italic]{why}[/]", expand=False))
+    console.print(Panel(t, title=f"[bold]{i}/{n}  {f['name']}[/]", expand=False))
+    colour = "yellow" if "not you" in why else "green"
+    console.print(f"  [{colour}]Suggestion: {why}[/]")
 
 
 def _edit(f: dict):
@@ -133,7 +145,8 @@ def cmd_scan(con, args):
         if args.yes:
             choice = decision[0]
         else:
-            choice = Prompt.ask("[h]ome  [g]ift  [o]someone else's  [s]kip  [e]dit then add",
+            # square brackets are Rich markup, so they must be escaped (AI_LOG #11)
+            choice = Prompt.ask(r"\[h]ome  \[g]ift  \[o] someone else's  \[s]kip  \[e]dit then add",
                                 choices=["h", "g", "o", "s", "e"], default=decision[0])
         if choice == "e":
             _edit(f)
@@ -360,13 +373,15 @@ def cmd_net(con, args):
     if args.action == "check":
         with console.status("Testing ping, packet loss and download speed (about 30s)..."):
             r = netcheck.run_check(con)
+        if r.get("error"):
+            console.print(f"[red]{r['error']}[/] Ping/packet-loss results were still logged.")
         plan = r.get("plan_mbps")
         verdict = ""
         if plan and r.get("down_mbps"):
             pct = r["down_mbps"] / plan
             colour = "green" if pct >= 0.8 else "yellow" if pct >= 0.5 else "red"
             verdict = f"  [{colour}]{pct:.0%} of the {plan:.0f} Mbps you pay for[/]"
-        console.print(f"Download {r.get('down_mbps')} Mbps{verdict}\nUpload   {r.get('up_mbps') or '-'} Mbps\n"
+        console.print(f"Download {r.get('down_mbps') or '-'} Mbps{verdict}\nUpload   {r.get('up_mbps') or '-'} Mbps\n"
                       f"Ping     {r.get('ping_ms') or '-'} ms  jitter {r.get('jitter_ms') or '-'} ms  "
                       f"loss {r.get('loss_pct') if r.get('loss_pct') is not None else '-'}%")
         if not plan:
