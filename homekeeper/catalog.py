@@ -137,6 +137,14 @@ CATEGORIES: dict[str, dict] = {
             ("Replace battery", 365, "DIY", "Replace yearly even if it has not chirped.", 150, "9V battery"),
         ],
     },
+    "kitchen_appliance": {
+        "keywords": ["air fryer", "mixer grinder", "microwave", "oven", "toaster", "kettle", "induction", "juicer"],
+        "warranty": 12,
+        "tasks": [
+            ("Deep clean basket / jars", 30, "DIY", "Unplug and cool. Soak removable parts in warm soapy water, no metal scrubbers on coatings.", 0, None),
+            ("Check cord, plug and seals", 180, "DIY", "Look for scorch marks, loose plugs or worn gaskets. Stop using it if the cord is damaged.", 0, None),
+        ],
+    },
     "other": {"keywords": [], "warranty": 12, "tasks": [
         ("General inspection", 180, "DIY", "Check cables, clean dust, confirm it still works as expected.", 0, None),
     ]},

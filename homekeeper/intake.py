@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import catalog, db
-from .extract import SUPPORTED, Extracted, extract, file_hash, short_name
+from .extract import SUPPORTED, Extracted, extract, file_hash, key_nouns, short_name
 
 KIND_PRIORITY = {"invoice": 0, "order_summary": 1, "packing_slip": 2, "manual": 3, "unknown": 4}
 
@@ -123,28 +123,40 @@ def _file_into_vault(path: str, folder: str) -> str:
     return str(dest)
 
 
+def first_due(start: date, interval_days: int) -> date:
+    """First due date. If it is already in the past we don't know when it was last done,
+    so it is due now rather than 'N days overdue' (AI_LOG #7)."""
+    return max(start + timedelta(days=interval_days), db.today())
+
+
 def add_tasks(con, product_id: int, category: str, schedules: list[dict], start: str | None,
               brand: str | None = None, model: str | None = None) -> int:
     """Create maintenance tasks: from the manual first, templates for anything not covered."""
     start_d = date.fromisoformat(start) if start else db.today()
     created = 0
-    manual_actions = set()
     for s in schedules:
-        due = start_d + timedelta(days=s["interval_days"])
         con.execute("INSERT INTO tasks(product_id,title,interval_days,mode,how_to,source,next_due)"
                     " VALUES (?,?,?,?,?,?,?)",
-                    (product_id, s["title"], s["interval_days"], "DIY", s["how_to"], "manual", due.isoformat()))
-        manual_actions.add(s["title"].split()[0].lower())
+                    (product_id, s["title"], s["interval_days"], s.get("mode", "DIY"), s["how_to"], "manual",
+                     first_due(start_d, s["interval_days"]).isoformat()))
         created += 1
+    manual_nouns = [key_nouns(s["title"]) for s in schedules]
     for title, days, mode, how, cost, part in catalog.CATEGORIES[category]["tasks"]:
-        if title.split()[0].lower() in manual_actions and days in {s["interval_days"] for s in schedules}:
-            continue  # the manual already covers this
-        due = start_d + timedelta(days=days)
+        if any(key_nouns(title) & n for n in manual_nouns):
+            continue  # the manual already covers this (AI_LOG #6)
         url = catalog.amazon_search_url(brand, model, part) if part else None
         con.execute("INSERT INTO tasks(product_id,title,interval_days,mode,how_to,est_cost,part_query,order_url,"
                     "source,next_due) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                    (product_id, title, days, mode, how, cost, part, url, "template", due.isoformat()))
+                    (product_id, title, days, mode, how, cost, part, url, "template",
+                     first_due(start_d, days).isoformat()))
         created += 1
+    # manual tasks that match a template inherit its cost and part link
+    for title, days, mode, how, cost, part in catalog.CATEGORIES[category]["tasks"]:
+        for s in schedules:
+            if key_nouns(title) & key_nouns(s["title"]) and (cost or part):
+                con.execute("UPDATE tasks SET est_cost=?, part_query=?, order_url=? WHERE product_id=? AND title=?",
+                            (cost, part, catalog.amazon_search_url(brand, model, part) if part else None,
+                             product_id, s["title"]))
     return created
 
 
