@@ -45,7 +45,7 @@ HomeKeeper automates the boring part: reading documents, working out dates, buil
 ## Quick start (2 minutes)
 
 ```bash
-git clone https://github.com/<your-username>/homekeeper.git
+git clone https://github.com/manoharananya/homekeeper.git
 cd homekeeper
 python -m pip install -r requirements.txt
 
