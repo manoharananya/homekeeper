@@ -56,9 +56,9 @@ reference these entries as `AI_LOG #n`.
 - **AI diagnosis:** the first due date was computed from the purchase date, but the tool has no idea whether the job was done since. Huge overdue numbers are noise, not information.
 - **Fix:** `first_due()` returns `max(purchase + interval, today)`. Past-due tasks start as "due today" and follow the real schedule once marked done.
 
-### #8 Gmail search returned an IMAP error
-- **Symptom:** `X-GM-RAW` search failed with a parse error.
-- **AI diagnosis:** the Gmail query contained inner double quotes (`"order confirmation"`) inside the quoted IMAP string argument.
+### #8 Gmail search quoting
+- **Symptom:** caught in AI code review before the first live run. The `X-GM-RAW` search string would be rejected by the server.
+- **AI diagnosis:** the Gmail query contained inner double quotes (`"order confirmation"`) inside the quoted IMAP string argument, which breaks IMAP string quoting.
 - **Fix:** rewrote the query with single keywords and no inner quotes.
 
 ### #9 Invoice titles lost their second line
