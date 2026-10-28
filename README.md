@@ -1,5 +1,7 @@
 # HomeKeeper
 
+[![tests](https://github.com/manoharananya/homekeeper/actions/workflows/tests.yml/badge.svg)](https://github.com/manoharananya/homekeeper/actions/workflows/tests.yml)
+
 **One console tool for everything you own at home: warranties, return windows, maintenance schedules and home internet health.**
 
 Drop your invoices and manuals into one folder. HomeKeeper reads them (including scanned PDFs), works out which documents belong to which product, asks you to confirm each one, and then tracks everything for you.
@@ -173,15 +175,17 @@ It covered headphones, an espresso machine and a tablet shipped to a different p
 
 ```bash
 python -m pip install pytest
-python -m pytest -q          # 12 tests: parsing, OCR fixes, manual matching, gift detection, due dates
+python -m pytest -q          # 15 tests: parsing, OCR fixes, manual matching, gift detection, bad files, due dates
 ```
+
+**Continuous integration:** every push runs `.github/workflows/tests.yml` on GitHub's servers. It installs the tool on Linux and macOS with Python 3.9 and 3.12, runs the tests, and runs the full demo plus the main commands. The badge at the top shows the result, and the **Actions** tab shows the full console output of each run.
 
 ## How AI was used
 
 This project was built for *Introduction to AI Practical Tools* (Mini-Project 2). An AI assistant (Claude) was used to:
 
 1. **Generate** the design and code, module by module, with one commit per feature.
-2. **Debug.** 12 real bugs, found by running the tool on real invoices, were diagnosed and fixed with AI. Each one is documented with symptom, diagnosis and fix in **[docs/AI_LOG.md](docs/AI_LOG.md)** and referenced in commit messages as `AI_LOG #n`.
+2. **Debug.** 17 real bugs, found by running the tool on real invoices and on deliberately broken input, were diagnosed and fixed with AI. Each one is documented with symptom, diagnosis and fix in **[docs/AI_LOG.md](docs/AI_LOG.md)** and referenced in commit messages as `AI_LOG #n`.
 3. **Document.** This README and the in-code docstrings.
 
 ## Roadmap
