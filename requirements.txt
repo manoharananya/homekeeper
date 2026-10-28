@@ -1,0 +1,6 @@
+rich>=13.0
+pdfplumber>=0.10
+# optional
+speedtest-cli>=2.1   # internet speed test (falls back to a simple download test)
+pytesseract>=0.3     # OCR for scanned PDFs/photos (needs the tesseract binary)
+reportlab>=4.0       # only to regenerate the sample documents

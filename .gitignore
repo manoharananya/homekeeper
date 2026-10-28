@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+# Personal data: never commit your own invoices, database or config
+homekeeper_data/
+*.db
+config.json
+inbox/
+vault/
+*.ics
