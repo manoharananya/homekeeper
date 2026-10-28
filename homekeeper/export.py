@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import csv
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from . import db
@@ -14,7 +14,7 @@ def _event(uid: str, day: str, summary: str, desc: str = "") -> list[str]:
     return [
         "BEGIN:VEVENT",
         f"UID:{uid}@homekeeper",
-        f"DTSTAMP:{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}",
+        f"DTSTAMP:{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
         f"DTSTART;VALUE=DATE:{d.strftime('%Y%m%d')}",
         f"DTEND;VALUE=DATE:{(d + timedelta(days=1)).strftime('%Y%m%d')}",
         f"SUMMARY:{esc(summary)}",

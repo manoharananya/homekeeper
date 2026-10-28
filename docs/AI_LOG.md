@@ -81,6 +81,37 @@ reference these entries as `AI_LOG #n`.
 - **AI diagnosis:** each missing flag fell back to an interactive prompt.
 - **Fix:** if any flag is passed, setup changes only those values and never prompts.
 
+## 2b. Second review pass (after publishing)
+
+A second AI review ran the tool against deliberately bad input: a corrupt PDF, a screenshot that is not an invoice, the same invoice dropped in twice, and product names instead of ids.
+
+### #13 One corrupt PDF crashed the whole scan
+- **Symptom:** `PdfminerException: No /Root object! - Is this really a PDF?` and a traceback. No other file in the inbox was processed.
+- **AI diagnosis:** `extract()` assumed every file opens. One bad download (a truncated or HTML "PDF") blocked everything else.
+- **Fix:** read errors are caught per file. The file is moved to `inbox/_unreadable/` with a one-line reason, and the scan carries on. Files with no text at all (e.g. a scan without Tesseract installed) get the same treatment, with a hint.
+
+### #14 A random screenshot was added as a "product"
+- **Symptom:** with `scan --yes`, a PNG screenshot became product "screenshot".
+- **AI diagnosis:** the default suggestion was always Home unless the shipping name differed, even when nothing in the file looked like an invoice.
+- **Fix:** if every file in a candidate is `unknown` and there is no order number, the suggestion is **Skip** ("Doesn't look like an invoice, order or manual"). You can still override it.
+
+### #15 Warranty end dates drifted at month ends
+- **Symptom:** an item bought on the 31st got a warranty ending on the 28th.
+- **AI diagnosis:** the code clamped every day to 28 so it was always valid, which lost up to 3 days of warranty.
+- **Fix:** `add_months()` uses `calendar.monthrange`, so 31 Jan + 1 month = 28 Feb, and 15 Mar + 12 months = 15 Mar.
+
+### #16 `order kent` crashed
+- **Symptom:** `ValueError: invalid literal for int() with base 10: 'kent'`.
+- **AI diagnosis:** `order` only accepted a task id or `p<id>`. Anything else was passed to `int()`.
+- **Fix:** `order` accepts a task id, `p<id>` or a product name.
+
+### #17 Duplicate downloads nagged forever
+- **Symptom:** after dropping the same invoice twice, the dashboard kept saying "1 new file in inbox".
+- **AI diagnosis:** the duplicate was skipped by hash but never moved, so it stayed in the inbox.
+- **Fix:** duplicates go to `inbox/_duplicates/` and the scan says so.
+
+Also replaced the deprecated `datetime.utcnow()` in the calendar export.
+
 ## 3. Documentation
 
 The README (problem, features, quick start, command reference, design, limits) and the docstrings were drafted with AI and then checked against the actual behaviour by running every command shown. The README screenshots are generated from the demo by `docs/make_screenshots.py`, so they match the code.

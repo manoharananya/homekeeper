@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 import webbrowser
 from datetime import date
@@ -87,7 +88,7 @@ def _show_candidate(i: int, n: int, f: dict, cand: intake.Candidate, why: str):
     for k, v in rows:
         t.add_row(k, str(v))
     console.print(Panel(t, title=f"[bold]{i}/{n}  {f['name']}[/]", expand=False))
-    colour = "yellow" if "not you" in why else "green"
+    colour = "yellow" if ("not you" in why or "Doesn't" in why) else "green"
     console.print(f"  [{colour}]Suggestion: {why}[/]")
 
 
@@ -104,10 +105,16 @@ def cmd_scan(con, args):
     owners = db.get_setting(con, "owner_names", [])
     if not owners and not args.yes:
         console.print("[yellow]Tip:[/] run [bold]homekeeper setup[/] first so I can spot gifts and orders for others.")
+    bad: list = []
     with console.status("Reading new files in the inbox..."):
-        cands, bills = intake.scan_inbox(con)
+        cands, bills = intake.scan_inbox(con, unreadable=bad)
+    for b in bad:
+        if b.kind == "duplicate":
+            console.print(f"[dim]Skipped {Path(b.path).name}: {b.error}. Moved to inbox/_duplicates/.[/]")
+        else:
+            console.print(f"[red]Couldn't read[/] {Path(b.path).name}: {b.error}. Moved to inbox/_unreadable/.")
     if not cands and not bills:
-        console.print(f"Inbox is empty. Drop PDFs or photos into [bold]{db.home_dir() / 'inbox'}[/].")
+        console.print(f"Nothing new to review. Drop PDFs or photos into [bold]{db.home_dir() / 'inbox'}[/].")
         return
     console.print(f"Found [bold]{len(cands)}[/] item(s) to review. You decide what goes in the tracker.\n")
     added = 0
@@ -140,7 +147,7 @@ def cmd_scan(con, args):
             continue
 
         f = cand.fields
-        decision, why = intake.suggest(f, owners)
+        decision, why = intake.suggest(f, owners, [d.kind for d in cand.docs])
         _show_candidate(i, len(cands), f, cand, why)
         if args.yes:
             choice = decision[0]
@@ -177,7 +184,7 @@ def cmd_dash(con, args):
     today = db.today()
     n_products = con.execute("SELECT COUNT(*) FROM products").fetchone()[0]
     inbox = db.home_dir() / "inbox"
-    waiting = sum(1 for p in inbox.rglob("*") if p.is_file() and p.suffix.lower() in intake.SUPPORTED)
+    waiting = len(intake.inbox_files(inbox))
     head = f"[bold]HomeKeeper[/]  {today:%a %d %b %Y}   {n_products} products tracked"
     if waiting:
         head += f"   [yellow]{waiting} new file(s) in inbox: run `scan`[/]"
@@ -313,10 +320,11 @@ def cmd_done(con, args):
 
 
 def cmd_order(con, args):
-    ref = args.ref
+    ref = args.ref.strip()
     url = None
-    if ref.lower().startswith("p"):
-        p = pick_product(con, ref[1:])
+    # task id ("7"), product id ("p3") or product name ("kent") (AI_LOG #16)
+    if not ref.isdigit():
+        p = pick_product(con, ref[1:] if re.fullmatch(r"[pP]\d+", ref) else ref)
         if p:
             url = catalog.amazon_product_url(p["asin"]) if p["asin"] else catalog.amazon_search_url(p["brand"], p["model"] or p["name"])
     else:
@@ -558,7 +566,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--by", help="who did it, e.g. 'self' or technician name")
     p.add_argument("--note")
     p.add_argument("--on", help="date done, YYYY-MM-DD (default today)")
-    p = add("order", cmd_order, "open the order page for a task's part (or p<id> to reorder a product)")
+    p = add("order", cmd_order, "open the part for a task id, or reorder a product (p<id> or name)")
     p.add_argument("ref")
     p.add_argument("--print-only", action="store_true")
     p = add("task", cmd_task_add, "add your own recurring task")

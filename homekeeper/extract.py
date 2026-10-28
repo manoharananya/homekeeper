@@ -103,6 +103,7 @@ class Extracted:
     plan_mbps: float | None = None
     isp: str | None = None
     schedules: list = field(default_factory=list)
+    error: str | None = None
     text: str = ""
 
     def as_dict(self):
@@ -273,9 +274,16 @@ def key_nouns(title: str) -> set[str]:
 
 def extract(path: Path) -> Extracted:
     path = Path(path)
-    raw, used_ocr = read_text(path)
+    try:
+        raw, used_ocr = read_text(path)
+    except Exception as e:  # corrupt / truncated / password-protected file (AI_LOG #13)
+        return Extracted(path=str(path), kind="unreadable", error=f"{e.__class__.__name__}: {str(e)[:80]}")
     text = fix_ocr(raw) if used_ocr else raw
     ex = Extracted(path=str(path), used_ocr=used_ocr, text=text)
+    if len(text.strip()) < 20:
+        ex.kind, ex.error = "unreadable", ("no text found (scanned image and Tesseract OCR not installed?)"
+                                           if used_ocr else "no text found")
+        return ex
     ex.kind = classify(text)
 
     if m := re.search(r"\b(\d{3}-\d{7}-\d{7})\b", text):  # Amazon order id

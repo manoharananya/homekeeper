@@ -110,3 +110,26 @@ def test_email_selection():
     assert mail.parse_selection("1,3,5-7", 10) == [0, 2, 4, 5, 6]
     assert mail.parse_selection("all", 3) == [0, 1, 2]
     assert mail.parse_selection("none", 3) == []
+
+
+def test_corrupt_and_duplicate_files_do_not_crash_scan(home):
+    inbox = db.home_dir() / "inbox"
+    (inbox / "broken.pdf").write_text("not a pdf")
+    shutil.copy(SAMPLES / "invoice_kent_ro.pdf", inbox / "kent_copy.pdf")
+    bad = []
+    cands, _ = intake.scan_inbox(home, unreadable=bad)
+    kinds = sorted(b.kind for b in bad)
+    assert kinds == ["duplicate", "unreadable"]
+    assert (inbox / "_unreadable" / "broken.pdf").exists()
+    assert not intake.inbox_files(inbox)[0].name.startswith("broken")
+
+
+def test_non_invoice_is_suggested_skip():
+    decision, _ = intake.suggest({"order_id": None}, ["Ananya Manohar"], ["unknown"])
+    assert decision == "skip"
+
+
+def test_warranty_end_handles_month_ends():
+    assert intake.add_months(date(2026, 1, 31), 1) == date(2026, 2, 28)
+    assert intake.add_months(date(2024, 2, 29), 12) == date(2025, 2, 28)
+    assert intake.add_months(date(2026, 3, 15), 24) == date(2028, 3, 15)

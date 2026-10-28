@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import calendar
 import shutil
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -70,14 +71,47 @@ def match_manual(manual: Extracted, names: list[tuple[str, str | None, str | Non
     return best_i if best_s >= 0.45 else None
 
 
-def scan_inbox(con, inbox: Path | None = None) -> tuple[list[Candidate], list[Extracted]]:
-    """Read new files and build review candidates. Returns (candidates, isp_bills)."""
+UNREADABLE, DUPLICATES = "_unreadable", "_duplicates"
+
+
+def inbox_files(inbox: Path) -> list[Path]:
+    """Supported files waiting in the inbox (files we could not read are parked in _unreadable/)."""
+    return [p for p in sorted(inbox.rglob("*")) if p.is_file() and p.suffix.lower() in SUPPORTED
+            and not {UNREADABLE, DUPLICATES} & set(p.relative_to(inbox).parts)]
+
+
+def _park(inbox: Path, p: Path, folder: str) -> Path:
+    dest_dir = inbox / folder
+    dest_dir.mkdir(exist_ok=True)
+    dest = dest_dir / p.name
+    shutil.move(str(p), dest)
+    return dest
+
+
+def scan_inbox(con, inbox: Path | None = None, unreadable: list | None = None
+               ) -> tuple[list[Candidate], list[Extracted]]:
+    """Read new files and build review candidates. Returns (candidates, isp_bills).
+    Files that cannot be read are moved to inbox/_unreadable/ and appended to `unreadable`."""
     inbox = Path(inbox or db.home_dir() / "inbox")
     known = {r["sha256"] for r in con.execute("SELECT sha256 FROM documents")}
     exs: list[Extracted] = []
-    for p in sorted(inbox.rglob("*")):
-        if p.is_file() and p.suffix.lower() in SUPPORTED and file_hash(p) not in known:
-            exs.append(extract(p))
+    seen_now: set[str] = set()
+    for p in inbox_files(inbox):
+        h = file_hash(p)
+        if h in known or h in seen_now:  # already tracked, or the same file dropped in twice (AI_LOG #17)
+            dest = _park(inbox, p, DUPLICATES)
+            if unreadable is not None:
+                unreadable.append(Extracted(path=str(dest), kind="duplicate",
+                                            error="same file is already tracked or in this batch"))
+            continue
+        seen_now.add(h)
+        ex = extract(p)
+        if ex.kind == "unreadable":
+            ex.path = str(_park(inbox, p, UNREADABLE))
+            if unreadable is not None:
+                unreadable.append(ex)
+            continue
+        exs.append(ex)
 
     groups: dict[str, Candidate] = {}
     loose_manuals, bills = [], []
@@ -106,8 +140,10 @@ def scan_inbox(con, inbox: Path | None = None) -> tuple[list[Candidate], list[Ex
     return cands, bills
 
 
-def suggest(fields: dict, owner_names: list[str]) -> tuple[str, str]:
+def suggest(fields: dict, owner_names: list[str], kinds: list[str] | None = None) -> tuple[str, str]:
     """Pre-select a decision and explain why. The user always confirms."""
+    if kinds is not None and all(k == "unknown" for k in kinds) and not fields.get("order_id"):
+        return "skip", "Doesn't look like an invoice, order or manual"  # AI_LOG #14
     ship = (fields.get("ship_to") or "").lower()
     if ship and owner_names and not any(_similar(ship, o) > 0.8 or o.lower() in ship for o in owner_names):
         return "other", f"Shipped to {fields['ship_to']}, not you. Gift or someone else's?"
@@ -165,13 +201,17 @@ def add_tasks(con, product_id: int, category: str, schedules: list[dict], start:
     return created
 
 
+def add_months(d: date, months: int) -> date:
+    """31 Jan + 1 month = 28/29 Feb, 15 Mar + 12 = 15 Mar next year (AI_LOG #15)."""
+    m = d.month - 1 + months
+    y, m = d.year + m // 12, m % 12 + 1
+    return date(y, m, min(d.day, calendar.monthrange(y, m)[1]))
+
+
 def save_product(con, f: dict, cand: Candidate) -> int:
     end = None
     if f.get("purchase_date") and f.get("warranty_months"):
-        d = date.fromisoformat(f["purchase_date"])
-        m = d.month - 1 + int(f["warranty_months"])
-        y, m = d.year + m // 12, m % 12 + 1
-        end = date(y, m, min(d.day, 28)).isoformat()
+        end = add_months(date.fromisoformat(f["purchase_date"]), int(f["warranty_months"])).isoformat()
     cur = con.execute(
         "INSERT INTO products(name,brand,model,category,asin,serial,order_id,seller,price,purchase_date,"
         "return_by,warranty_months,warranty_end,room,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
