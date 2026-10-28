@@ -1,7 +1,8 @@
 name: tests
 
 # Runs on GitHub's servers on every push and pull request:
-# installs HomeKeeper on Linux and macOS, runs the test suite and the full demo.
+# installs HomeKeeper, runs the test suite and the full demo.
+# Linux only: free macOS runners were never assigned in run #1 (AI_LOG #18).
 on:
   push:
   pull_request:
@@ -12,12 +13,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
         python: ["3.9", "3.12"]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
       - name: Install

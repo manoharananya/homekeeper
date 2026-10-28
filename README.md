@@ -178,7 +178,7 @@ python -m pip install pytest
 python -m pytest -q          # 15 tests: parsing, OCR fixes, manual matching, gift detection, bad files, due dates
 ```
 
-**Continuous integration:** every push runs `.github/workflows/tests.yml` on GitHub's servers. It installs the tool on Linux and macOS with Python 3.9 and 3.12, runs the tests, and runs the full demo plus the main commands. The badge at the top shows the result, and the **Actions** tab shows the full console output of each run.
+**Continuous integration:** every push runs `.github/workflows/tests.yml` on GitHub's servers. It installs the tool on Linux (Ubuntu 24.04) with Python 3.9 and 3.12, runs the tests, and runs the full demo plus the main commands. The badge at the top shows the result, and the **Actions** tab shows the full console output of each run.
 
 ## How AI was used
 

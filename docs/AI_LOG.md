@@ -112,6 +112,11 @@ A second AI review ran the tool against deliberately bad input: a corrupt PDF, a
 
 Also replaced the deprecated `datetime.utcnow()` in the calendar export.
 
+### #18 First CI run failed after 15 minutes
+- **Symptom:** GitHub Actions run #1 showed a red cross after 15m 2s.
+- **AI diagnosis:** the annotations showed the code was not the problem. The two Ubuntu jobs ran and only raised warnings. The two macOS jobs said *"The job was not acquired by Runner of type hosted even after multiple attempts"*: GitHub had no free macOS machine (*"Due to capacity constraints..."*), so the run timed out and failed. There were also warnings that `checkout@v4`/`setup-python@v5` use deprecated Node.js 20, and that `ubuntu-latest` is moving to Ubuntu 26.
+- **Fix:** CI runs on Linux only, pinned to `ubuntu-24.04`, with a 10-minute timeout. The actions are upgraded to `checkout@v5` and `setup-python@v6`. macOS was already covered by running the tool locally.
+
 ## 3. Documentation
 
 The README (problem, features, quick start, command reference, design, limits) and the docstrings were drafted with AI and then checked against the actual behaviour by running every command shown. The README screenshots are generated from the demo by `docs/make_screenshots.py`, so they match the code.
