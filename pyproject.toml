@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "homekeeper"
+version = "1.0.0"
+description = "Console tool for home warranties, returns, maintenance and internet health"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+dependencies = ["rich>=13.0", "pdfplumber>=0.10"]
+
+[project.optional-dependencies]
+full = ["speedtest-cli>=2.1", "pytesseract>=0.3"]
+
+[project.scripts]
+homekeeper = "homekeeper.cli:main"
+
+[tool.setuptools]
+packages = ["homekeeper"]

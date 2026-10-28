@@ -10,3 +10,4 @@ config.json
 inbox/
 vault/
 *.ics
+homekeeper_demo/
